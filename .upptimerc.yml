@@ -1,0 +1,41 @@
+owner: nishant-chauhan2427 # GitHub user that owns this repository
+repo: ABC_Status
+
+# Every URL is a repository secret ($NAME) so only the component names are public.
+# Body checks matter: the gateway serves the frontend's HTML (200) for unknown
+# paths, so a plain status-code check could report a dead API as "up".
+sites:
+  - name: Frontend
+    url: $ABC_FRONTEND_URL # https://insights.abcconsultants.in/
+    __dangerous__body_down_if_text_missing: 'id="root"'
+
+  - name: Core API
+    url: $ABC_CORE_HEALTH_URL # https://insights.abcconsultants.in/abc/core/api/v1/health
+    # 503 when the database is down; body must say ok
+    __dangerous__body_down_if_text_missing: '"status":"ok"'
+
+  - name: AFS API
+    url: $ABC_AFS_HEALTH_URL # https://insights.abcconsultants.in/abc/afs/api/v1/health
+    __dangerous__body_down_if_text_missing: '"status":"ok"'
+
+  - name: Cache (Redis)
+    url: $ABC_CORE_HEALTH_URL
+    # Redis down → health still 200 (the app works without it), so flag it
+    # as degraded rather than down. If the DB is down this reads down too.
+    __dangerous__body_degraded_if_text_missing: '"redis":"up"'
+
+status-website:
+  # No custom domain yet — served at https://nishant-chauhan2427.github.io/ABC_Status
+  # For e.g. status.abcconsultants.in: add `cname: status.abcconsultants.in`,
+  # remove baseUrl, and point a CNAME DNS record at nishant-chauhan2427.github.io
+  baseUrl: /ABC_Status
+  logoUrl: https://raw.githubusercontent.com/nishant-chauhan2427/ABC_Status/master/assets/abc_logo.png
+  name: ABC Platform Status
+  introTitle: "**ABC Intelligence Suite** — platform status"
+  introMessage: Live status of the ABC platform, checked every 5 minutes from outside our servers. Each component shows its uptime and incident history.
+  navbar:
+    - title: Status
+      href: /
+
+# Upptime also supports notifications, assigning issues, and more
+# See https://upptime.js.org/docs/configuration
