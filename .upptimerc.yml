@@ -9,20 +9,48 @@ sites:
     url: $ABC_FRONTEND_URL # https://insights.abcconsultants.in/
     __dangerous__body_down_if_text_missing: 'id="root"'
 
-  - name: Core API
-    url: $ABC_CORE_HEALTH_URL # https://insights.abcconsultants.in/abc/core/api/v1/health
-    # 503 when the database is down; body must say ok
-    __dangerous__body_down_if_text_missing: '"status":"ok"'
+  # Service vs database are split by reading the same /health two ways:
+  #   DB up   → 200 {"status":"ok","database":"up",...}
+  #   DB down → 503 {"status":"error","database":"down"}   ← service is alive
+  #   Service down → gateway 502/504 / timeout, no JSON at all
+  # A service monitor accepts 200 *and* 503 (the process answered) and only
+  # needs the JSON key; the database monitor needs "database":"up".
+  # If the service itself is down, its database can't be checked either,
+  # so both read down — the service is then the root cause.
 
-  - name: AFS API
+  - name: Shared Service
+    url: $ABC_CORE_HEALTH_URL # https://insights.abcconsultants.in/abc/core/api/v1/health
+    expectedStatusCodes: [200, 503]
+    __dangerous__body_down_if_text_missing: '"database":'
+
+  - name: Shared Database
+    url: $ABC_CORE_HEALTH_URL
+    __dangerous__body_down_if_text_missing: '"database":"up"'
+
+  - name: AFS Service
     url: $ABC_AFS_HEALTH_URL # https://insights.abcconsultants.in/abc/afs/api/v1/health
-    __dangerous__body_down_if_text_missing: '"status":"ok"'
+    expectedStatusCodes: [200, 503]
+    __dangerous__body_down_if_text_missing: '"database":'
+
+  - name: AFS Database
+    url: $ABC_AFS_HEALTH_URL
+    __dangerous__body_down_if_text_missing: '"database":"up"'
 
   - name: Cache (Redis)
     url: $ABC_CORE_HEALTH_URL
-    # Redis down → health still 200 (the app works without it), so flag it
-    # as degraded rather than down. If the DB is down this reads down too.
+    # Redis down → health still 200 (the app works without it), so it shows
+    # as degraded (amber), not down. While the Shared DB is down the health
+    # body carries no redis field, so this reads degraded then too.
+    expectedStatusCodes: [200, 503]
     __dangerous__body_degraded_if_text_missing: '"redis":"up"'
+    # No JSON at all = the service is down, so Redis can't be judged → down
+    # (the down rule runs after the degraded one and wins).
+    __dangerous__body_down_if_text_missing: '"database":'
+
+# No GitHub-issue notifications go to anyone: alerts are e-mail only, to
+# insights-support@abcconsultants.in, via the NOTIFICATION_EMAIL_SMTP* repo
+# secrets. Upptime still records each incident as a (locked) issue — that is
+# what the status page's incident history is built from.
 
 status-website:
   # No custom domain yet — served at https://nishant-chauhan2427.github.io/ABC_Status

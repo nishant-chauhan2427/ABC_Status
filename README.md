@@ -16,17 +16,30 @@ Uptime monitor and status page for the **ABC Intelligence Suite**, powered by [U
 
 ## What is checked
 
-| Component | Down when | Covers |
+| Component | Down when | Means |
 |---|---|---|
-| **Frontend** | the page doesn't load or `id="root"` is missing | server / gateway / DNS / SSL down, frontend not served |
-| **Core API** | `/abc/core/api/v1/health` isn't `"status":"ok"` | Shared backend down, **database down** (health runs `SELECT 1` → 503) |
-| **AFS API** | `/abc/afs/api/v1/health` isn't `"status":"ok"` | AFS backend down, its database down |
-| **Cache (Redis)** | *degraded* (not down) when the health body lacks `"redis":"up"` | Redis down — the app keeps working, only slower |
+| **Frontend** | page doesn't load, or `id="root"` missing | server / gateway / DNS / SSL down, frontend not served |
+| **Shared Service** | `/abc/core/api/v1/health` gives no JSON (502/504/timeout) | Shared backend process down |
+| **Shared Database** | health body lacks `"database":"up"` (503) | Shared's Postgres unreachable — service itself still up |
+| **AFS Service** | `/abc/afs/api/v1/health` gives no JSON | AFS backend process down |
+| **AFS Database** | health body lacks `"database":"up"` | AFS's Postgres unreachable |
+| **Cache (Redis)** | *degraded* (amber) when `"redis":"up"` is missing | Redis down — the app keeps working, only slower |
+
+How to read it:
+
+| What you see | What broke |
+|---|---|
+| Only **Shared Database** / **AFS Database** red | the database; services are up |
+| **Shared Service** red (its Database red too) | the Shared backend — DB state unknown while it's down |
+| Everything red, Frontend too | the server / gateway / network |
+| Only **Cache (Redis)** amber | Redis; users unaffected apart from speed |
 
 Health URLs live in repository secrets (`ABC_FRONTEND_URL`, `ABC_CORE_HEALTH_URL`, `ABC_AFS_HEALTH_URL`), so only component names are public.
 
 **Not covered:** a single API returning 500 while `/health` is fine (Sentry catches that), a frontend JavaScript crash on a page that still loads, and outages shorter than the 5-minute check interval.
 
-## Incidents
+## Alerts and incidents
 
-Every outage is a GitHub issue labelled with the component — opened when the check fails, closed automatically when it recovers, with start/end times. See [issues](../../issues?q=is%3Aissue).
+Alerts are **e-mail only**, to `insights-support@abcconsultants.in` (SMTP, configured through the `NOTIFICATION_EMAIL_SMTP*` repository secrets) — one mail when a component goes down or degraded, one when it recovers.
+
+Upptime also keeps each incident as a locked GitHub issue; that is what the status page's incident history is built from. Nobody needs to watch or act on the issues.
