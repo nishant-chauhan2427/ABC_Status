@@ -323,7 +323,7 @@
 
   var root;
   var renderedDays = 0;
-  var state = { sites: null, issues: [], updates: {}, startTimes: {}, error: null };
+  var state = { sites: null, issues: [], updates: {}, startTimes: {}, error: null, incidentsMissing: false };
 
   function mount() {
     if (!document.body) {
@@ -355,14 +355,17 @@
     state.error = null;
     Promise.all([
       fetchJson(RAW + "/history/summary.json", "abc-status-summary"),
+      // GitHub allows 60 API calls an hour per IP. Past that the bars still draw from
+      // summary.json (not limited) and the page says incidents are missing.
       fetchJson(API + "/issues?labels=status&state=all&sort=created&direction=desc&per_page=100", "abc-status-issues")
-        .catch(function () { return []; }), // the bars still draw from summary.json alone
+        .catch(function () { return null; }),
       // The newest comments on every issue, in one call — one per incident would spend
       // a visitor's 60 GitHub API requests an hour.
       fetchJson(API + "/issues/comments?sort=created&direction=desc&per_page=100", "abc-status-comments")
         .catch(function () { return []; }),
     ]).then(function (results) {
       state.sites = results[0];
+      state.incidentsMissing = results[1] === null;
       state.issues = (results[1] || []).filter(function (issue) { return !issue.pull_request; });
       state.updates = groupComments(results[2] || []);
       render();
@@ -385,6 +388,9 @@
     root.appendChild(renderHeader());
     var main = el("main", { class: "abc-main" }, [el("div", { class: "abc-wrap" }, [
       renderBanner(),
+      state.incidentsMissing
+        ? el("p", { class: "abc-notice", role: "status", text: "Incident details could not be loaded right now (GitHub's hourly limit for this network). The component status and bars below are current; try again in a few minutes." })
+        : null,
       renderActive(),
       el("p", { class: "abc-caption", text: "Uptime over the past " + days + " days." }),
       renderComponents(days),
