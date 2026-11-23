@@ -1,0 +1,5 @@
+# Only the built site and the Docker files go into the image — not the monitor's
+# history/, api/, graphs/ or workflows.
+*
+!site/
+!docker/

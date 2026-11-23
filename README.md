@@ -64,3 +64,39 @@ Resolved - Exports are working normally again.
 - **An incident monitoring did not catch** (e.g. one screen failing while `/health` is fine): open an issue with the `status` label; its description is the first update. Add a component's label (`frontend`, `afs-service`, …) to also mark that component's day bar. Close the issue when it is over.
 
 The page itself is `assets/status-ui.js` + `assets/status-ui.css` (wired in `.upptimerc.yml`); Upptime's incident pages are unchanged. The repository must be **public** — visitors' browsers read the status data and issues from GitHub directly.
+
+## Docker (self-hosting the page)
+
+Built like the ABC frontend's image: `node:20-alpine` + `serve@14.2.4` on port **4173** (`docker/Dockerfile`, routing in `docker/serve-config.sh`).
+
+**Docker Image CI** (`.github/workflows/docker-image.yml`) runs after Upptime rebuilds the site on `gh-pages` (and on demand from the Actions tab), smoke-tests the image and pushes it to Docker Hub:
+
+- `<DOCKER_USER>/abc-status:<gh-pages short sha>`
+- `<DOCKER_USER>/abc-status:latest`
+
+It needs the repository secrets **`DOCKER_USER`** and **`DOCKER_PASSWORDS`** (same names as in the frontend repo). The status data is read live from GitHub, so the image only changes when the site itself does.
+
+On the server:
+
+```sh
+docker pull <DOCKER_USER>/abc-status:latest
+docker rm -f abc-status 2>/dev/null
+docker run -d --name abc-status --restart unless-stopped -p 127.0.0.1:4174:4173 <DOCKER_USER>/abc-status:latest
+```
+
+and an nginx site for it, e.g.:
+
+```nginx
+server {
+    server_name status.abcconsultants.in;
+    location / {
+        proxy_pass http://127.0.0.1:4174;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**Base path.** Upptime builds the site for `status-website.baseUrl` (today `/ABC_Status`), so the container serves it there and redirects `/` to it. The built site also loads its stylesheet and sends its error pages to `https://nishant-chauhan2427.github.io/ABC_Status` (Upptime's `config.path`), so this setup still leans on GitHub Pages. To run it on its own domain: in `.upptimerc.yml` set `cname: status.abcconsultants.in`, remove `baseUrl`, point the `scripts`/`links` URLs at the new domain, and set the repository variable `STATUS_BASE_PATH` to `/`.
+
+Local build: `git archive origin/gh-pages | tar -x -C site` (in an empty `site/` at the repo root), then `docker build . -f docker/Dockerfile -t abc-status:local`.
