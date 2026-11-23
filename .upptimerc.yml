@@ -65,13 +65,15 @@ status-website:
     - title: Status
       href: /
   # The home page's layout (90-day bars per component, day tooltips, past incidents).
-  # Both files live in assets/, which Upptime copies to the site root; the paths are
-  # relative to the page's <base>, so they keep working under a custom domain.
+  # Both files live in assets/, which Upptime copies to the site root after the build.
+  # Full URLs on purpose: Sapper's export crawls every same-site link, and a relative
+  # `status-ui.css` became a page folder that the asset copy then failed to overwrite
+  # (EISDIR). With a custom domain (cname), change the host here too.
   scripts:
-    - src: status-ui.js
+    - src: https://nishant-chauhan2427.github.io/ABC_Status/status-ui.js
   links:
     - rel: stylesheet
-      href: status-ui.css
+      href: https://nishant-chauhan2427.github.io/ABC_Status/status-ui.css
 
 # Upptime also supports notifications, assigning issues, and more
 # See https://upptime.js.org/docs/configuration
