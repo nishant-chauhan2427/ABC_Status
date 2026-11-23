@@ -62,6 +62,11 @@ status-website:
   cname: insights.abcconsultants.in
   baseUrl: /status
   logoUrl: https://raw.githubusercontent.com/nishant-chauhan2427/ABC_Status/master/assets/abc_logo.png
+  # The ABC icon in the browser tab (the frontend's favicon), instead of Upptime's.
+  # A full URL for the same reason as the scripts below. assets/logo-192.png and
+  # logo-512.png replace Upptime's own (the copy runs after the build), so the
+  # web-app manifest — "Add to Home Screen" — shows ABC too.
+  favicon: https://insights.abcconsultants.in/status/favicon.png
   name: ABC Platform Status
   introTitle: "**ABC Intelligence Suite** — platform status"
   introMessage: Live status of the ABC platform, checked every 5 minutes from outside our servers. Each component shows its uptime and incident history.
