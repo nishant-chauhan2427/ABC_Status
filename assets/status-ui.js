@@ -34,7 +34,8 @@
     phoneDays: 30,
     phoneWidth: 640,
     historyDays: 14,
-    cacheMs: 2 * 60 * 1000,
+    // Visitors share GitHub's 60 API calls an hour per IP (a whole office is one IP).
+    cacheMs: 5 * 60 * 1000,
     // Optional one-line explanations, by Upptime slug (the component name, kebab-cased).
     descriptions: {
       frontend: "The web app at insights.abcconsultants.in",
@@ -153,7 +154,7 @@
   function fetchJson(url, cacheKey) {
     var cached = cacheKey && readCache(cacheKey);
     if (cached) return Promise.resolve(cached);
-    return fetch(url, { headers: { Accept: "application/vnd.github+json" } }).then(function (res) {
+    return nativeFetch(url, { headers: { Accept: "application/vnd.github+json" } }).then(function (res) {
       if (!res.ok) throw new Error(url + " → " + res.status);
       return res.json();
     }).then(function (data) {
@@ -163,7 +164,7 @@
   }
 
   function fetchStartTime(slug) {
-    return fetch(RAW + "/history/" + slug + ".yml").then(function (res) {
+    return nativeFetch(RAW + "/history/" + slug + ".yml").then(function (res) {
       return res.ok ? res.text() : "";
     }).then(function (text) {
       var match = /startTime:\s*["']?([0-9T:.\-+Z ]+)/.exec(text);
@@ -636,6 +637,21 @@
       el("span", {}, ["Powered by ", link("https://upptime.js.org", "Upptime")]),
     ])]);
   }
+  // ── Upptime's own home page, kept quiet ───────────────────────────────────
+  // Upptime's home components still mount (hidden) and each visit spends 4 GitHub API
+  // calls; when an IP runs out, Upptime sends the whole page to /rate-limit-exceeded.
+  // This page needs none of it, so on the home page their GitHub API calls are answered
+  // with an empty list here, before they reach the network. This file loads in <head>,
+  // before Upptime's components mount. Other pages (incidents) keep their calls.
+  var nativeFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var url = typeof input === "string" ? input : (input && input.url) || "";
+    if (isHome() && url.indexOf("https://api.github.com/") === 0) {
+      return Promise.resolve(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+    }
+    return nativeFetch(input, init);
+  };
+
   // ── Start ─────────────────────────────────────────────────────────────────
   // Runs from <head>, before the body is parsed, so Upptime's page never flashes on
   // the home page. Sapper navigates with pushState, so a client-side move to or from
