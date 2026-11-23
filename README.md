@@ -43,3 +43,21 @@ Health URLs live in repository secrets (`ABC_FRONTEND_URL`, `ABC_CORE_HEALTH_URL
 Alerts are **e-mail only**, to `insights-support@abcconsultants.in` (SMTP, configured through the `NOTIFICATION_EMAIL_SMTP*` repository secrets) — one mail when a component goes down or degraded, one when it recovers.
 
 Upptime also keeps each incident as a locked GitHub issue; that is what the status page's incident history is built from. Nobody needs to watch or act on the issues.
+
+## Posting incident updates
+
+Updates shown under an incident on the status page are **comments on its GitHub issue**. Start each comment with its stage, then the message:
+
+```
+Investigating - We are looking into errors when exporting PBCs.
+Identified - A timeout on large exports. Working on a fix.
+Monitoring - A fix has been deployed and we are watching the exports.
+Resolved - Exports are working normally again.
+```
+
+`Investigating`, `Identified`, `Monitoring`, `Update` and `Resolved` are recognised (bold or a colon is fine too: `**Monitoring:** …`); any other comment shows as an **Update**. Newest first, with its time in UTC. Markdown is shown as plain text.
+
+- **Only the repository's owner, members and collaborators** (and the Upptime bot) appear on the page — a comment from anyone else is ignored.
+- **An incident monitoring did not catch** (e.g. one screen failing while `/health` is fine): open an issue with the `status` label; its description is the first update. Add a component's label (`frontend`, `afs-service`, …) to also mark that component's day bar. Close the issue when it is over.
+
+The page itself is `assets/status-ui.js` + `assets/status-ui.css` (wired in `.upptimerc.yml`); Upptime's incident pages are unchanged. The repository must be **public** — visitors' browsers read the status data and issues from GitHub directly.

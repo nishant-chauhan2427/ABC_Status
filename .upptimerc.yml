@@ -64,6 +64,14 @@ status-website:
   navbar:
     - title: Status
       href: /
+  # The home page's layout (90-day bars per component, day tooltips, past incidents).
+  # Both files live in assets/, which Upptime copies to the site root; the paths are
+  # relative to the page's <base>, so they keep working under a custom domain.
+  scripts:
+    - src: status-ui.js
+  links:
+    - rel: stylesheet
+      href: status-ui.css
 
 # Upptime also supports notifications, assigning issues, and more
 # See https://upptime.js.org/docs/configuration
