@@ -52,6 +52,10 @@
   var RAW = SOURCE.raw || "https://raw.githubusercontent.com/" + CONFIG.owner + "/" + CONFIG.repo + "/" + CONFIG.branch;
   var API = SOURCE.api || "https://api.github.com/repos/" + CONFIG.owner + "/" + CONFIG.repo;
   var DAY_MS = 86400000;
+  // Every date and time on the page is Indian time. India has no daylight saving,
+  // so an IST day is always UTC+05:30.
+  var TIME_ZONE = "Asia/Kolkata";
+  var IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
   var LEVEL_LABEL = {
     ok: "Operational",
@@ -109,25 +113,31 @@
     return el("a", { href: href, rel: "external noopener", text: text });
   }
 
-  function utcKey(time) {
-    return new Date(time).toISOString().slice(0, 10);
+  /** The IST calendar day of a moment, as YYYY-MM-DD. */
+  function dayKey(time) {
+    return new Date(new Date(time).getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
   }
 
+  /** The moment an IST day begins. */
   function dayStart(key) {
-    return Date.parse(key + "T00:00:00Z");
+    return Date.parse(key + "T00:00:00+05:30");
   }
 
   function formatDay(key) {
     return new Date(dayStart(key)).toLocaleDateString("en-GB", {
-      day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+      day: "numeric", month: "short", year: "numeric", timeZone: TIME_ZONE,
     });
   }
 
-  // Incident times are UTC, like the day bars and the updates.
+  function formatClock(time) {
+    return new Date(time).toLocaleTimeString("en-US", {
+      hour: "numeric", minute: "2-digit", hour12: true, timeZone: TIME_ZONE,
+    }) + " IST";
+  }
+
   function formatDateTime(time) {
-    var d = new Date(time);
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) +
-      ", " + d.toISOString().slice(11, 16) + " UTC";
+    return new Date(time).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: TIME_ZONE }) +
+      ", " + formatClock(time);
   }
 
   function formatDuration(minutes) {
@@ -250,9 +260,9 @@
   }
 
   function formatUpdateTime(time) {
-    var d = new Date(time);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) +
-      " - " + d.toISOString().slice(11, 16) + " UTC";
+    return new Date(time).toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric", timeZone: TIME_ZONE,
+    }) + " - " + formatClock(time);
   }
 
   function renderUpdates(issue, className) {
@@ -270,7 +280,26 @@
     });
   }
 
-  /** The bar for one component on one UTC day. */
+  /** Minutes of [from, to) the incidents cover, overlapping ones counted once. */
+  function minutesCovered(incidents, from, to) {
+    var spans = incidents.map(function (issue) {
+      var span = issueSpan(issue);
+      return [Math.max(span.start, from), Math.min(span.end, to)];
+    }).sort(function (a, b) { return a[0] - b[0]; });
+    var total = 0;
+    var reach = from;
+    spans.forEach(function (span) {
+      var start = Math.max(span[0], reach);
+      if (span[1] > start) { total += span[1] - start; reach = span[1]; }
+    });
+    return Math.round(total / 60000);
+  }
+
+  /**
+   * The bar for one component on one IST day. Its downtime comes from the incidents'
+   * own times. Upptime's dailyMinutesDown is per UTC day, so it is the fallback only
+   * when the incidents could not be loaded (then the day is off by 5½ hours).
+   */
   function dayCell(site, key, issues, startTime) {
     var from = dayStart(key);
     var to = from + DAY_MS;
@@ -280,7 +309,9 @@
       var span = issueSpan(issue);
       return hasLabel(issue, site.slug) && span.start < to && span.end > from;
     });
-    var minutes = (site.dailyMinutesDown || {})[key] || 0;
+    var minutes = state.incidentsMissing
+      ? (site.dailyMinutesDown || {})[key] || 0
+      : minutesCovered(incidents, from, Math.min(to, Date.now()));
     var level = "ok";
     if (minutes > 0 || incidents.length) {
       var down = incidents.some(function (issue) { return issueKind(issue) === "down"; });
@@ -291,9 +322,10 @@
   }
 
   function dayKeys(count) {
-    var today = dayStart(utcKey(Date.now()));
+    var today = dayStart(dayKey(Date.now()));
     var keys = [];
-    for (var i = count - 1; i >= 0; i--) keys.push(utcKey(today - i * DAY_MS));
+    // Noon of each day, so the step never lands on a midnight edge.
+    for (var i = count - 1; i >= 0; i--) keys.push(dayKey(today - i * DAY_MS + DAY_MS / 2));
     return keys;
   }
 
@@ -606,7 +638,7 @@
     if (!state.sites) return section;
     var byDay = {};
     state.issues.forEach(function (issue) {
-      var key = utcKey(issue.created_at);
+      var key = dayKey(issue.created_at);
       (byDay[key] = byDay[key] || []).push(issue);
     });
     dayKeys(CONFIG.historyDays).reverse().forEach(function (key) {
@@ -639,7 +671,7 @@
 
   function renderFooter() {
     return el("footer", { class: "abc-footer" }, [el("div", { class: "abc-wrap" }, [
-      el("span", { text: "Checked every 5 minutes from outside our servers. Times on the bars are UTC days." }),
+      el("span", { text: "Checked every 5 minutes from outside our servers. All times are Indian Standard Time (IST)." }),
       el("span", {}, ["Powered by ", link("https://upptime.js.org", "Upptime")]),
     ])]);
   }
