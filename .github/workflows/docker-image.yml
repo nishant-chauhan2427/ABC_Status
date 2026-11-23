@@ -2,22 +2,32 @@
 #
 # Not an Upptime workflow: Upptime's template update replaces only its own eight
 # workflow files, so this one stays. It runs after Upptime has (re)built the site on
-# gh-pages, packs that site with docker/Dockerfile and pushes it to Docker Hub as
-#   <DOCKER_USER>/abc-status:<gh-pages short sha>   and   <DOCKER_USER>/abc-status:latest
-#
-# Needs the repository secrets DOCKER_USER and DOCKER_PASSWORDS (same names as the
-# frontend repo's). The data on the page is read live from GitHub, so the image only
-# changes when the site itself changes (status UI, config, daily rebuild).
+# gh-pages, packs that site with docker/Dockerfile, smoke-tests it and pushes it as
+#   ghcr.io/<owner>/abc-status:<gh-pages short sha>  and  :latest   — always, with the
+#     workflow's own token (no secret needed)
+#   <DOCKER_USER>/abc-status:<sha>  and  :latest                     — on Docker Hub too,
+#     once the repository secrets DOCKER_USER and DOCKER_PASSWORDS are set (same names
+#     as the frontend repo's); without them that step is skipped, not failed.
+# The data on the page is read live from GitHub, so the image only changes when the
+# site itself changes (status UI, config, daily rebuild).
 name: Docker Image CI
 
 on:
   workflow_run:
     workflows: ["Static Site CI", "Setup CI"]
     types: [completed]
+  # A change to the image itself rebuilds it from the current site.
+  push:
+    branches: [master]
+    paths:
+      - "docker/**"
+      - ".dockerignore"
+      - ".github/workflows/docker-image.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write # ghcr.io
 
 concurrency:
   group: docker-image
@@ -27,19 +37,20 @@ jobs:
   build:
     name: Build and push the status image
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     env:
       IMAGE_NAME: abc-status
+      HAS_DOCKER_HUB: ${{ secrets.DOCKER_USER != '' && secrets.DOCKER_PASSWORDS != '' }}
       # The path Upptime builds the site for (status-website.baseUrl, /status). For a
       # site built for the root, set the repository variable STATUS_BASE_PATH to "/".
       STATUS_BASE_PATH: ${{ vars.STATUS_BASE_PATH || '/status' }}
 
     steps:
       - name: Checkout the Dockerfile
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Checkout the built site (gh-pages)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: gh-pages
           path: site
@@ -53,38 +64,52 @@ jobs:
           BASE_PATH="${STATUS_BASE_PATH%/}"
           echo "BASE_PATH=${BASE_PATH}" >> "$GITHUB_ENV"
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Log in to Docker Hub
+        if: env.HAS_DOCKER_HUB == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORDS }}
+
+      - name: Note the skipped Docker Hub push
+        if: env.HAS_DOCKER_HUB != 'true'
+        run: echo "::notice::DOCKER_USER / DOCKER_PASSWORDS are not set, so the image goes to ghcr.io only."
 
       - name: Compute image tags
         id: meta
         env:
           DOCKER_USER_RAW: ${{ secrets.DOCKER_USER }}
         run: |
-          # A pasted secret can carry whitespace or a newline, which breaks the tag.
-          DOCKER_USER="$(printf '%s' "$DOCKER_USER_RAW" | tr -d '[:space:]')"
-          if [ -z "$DOCKER_USER" ]; then
-            echo "::error::DOCKER_USER secret is empty or not set"
-            exit 1
+          SITE_SHA="$(git ls-remote origin refs/heads/gh-pages | cut -c1-7)"
+          # Registry paths must be lower case.
+          GHCR="ghcr.io/$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')/${IMAGE_NAME}"
+          TAGS="${GHCR}:${SITE_SHA} ${GHCR}:latest"
+          if [ "$HAS_DOCKER_HUB" = "true" ]; then
+            # A pasted secret can carry whitespace or a newline, which breaks the tag.
+            DOCKER_USER="$(printf '%s' "$DOCKER_USER_RAW" | tr -d '[:space:]')"
+            TAGS="${TAGS} ${DOCKER_USER}/${IMAGE_NAME}:${SITE_SHA} ${DOCKER_USER}/${IMAGE_NAME}:latest"
           fi
-          SITE_SHA="$(git -C . ls-remote origin refs/heads/gh-pages | cut -c1-7)"
-          echo "tag_sha=${DOCKER_USER}/${IMAGE_NAME}:${SITE_SHA}" >> "$GITHUB_OUTPUT"
-          echo "tag_latest=${DOCKER_USER}/${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "smoke=${GHCR}:latest" >> "$GITHUB_OUTPUT"
           echo "site_sha=${SITE_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Build the Docker image
         run: |
-          docker build . --file docker/Dockerfile \
-            --build-arg BASE_PATH="${BASE_PATH}" \
-            --tag "${{ steps.meta.outputs.tag_sha }}" \
-            --tag "${{ steps.meta.outputs.tag_latest }}"
+          set -- ${{ steps.meta.outputs.tags }}
+          args=""
+          for tag in "$@"; do args="$args --tag $tag"; done
+          docker build . --file docker/Dockerfile --build-arg BASE_PATH="${BASE_PATH}" $args
 
       - name: Smoke-test the image
         run: |
-          docker run -d --name status-smoke -p 4173:4173 "${{ steps.meta.outputs.tag_latest }}"
+          docker run -d --name status-smoke -p 4173:4173 "${{ steps.meta.outputs.smoke }}"
           for i in $(seq 1 20); do curl -fs -o /dev/null "http://127.0.0.1:4173${BASE_PATH}/" && break; sleep 1; done
           curl -fs "http://127.0.0.1:4173${BASE_PATH}/" | grep -q 'status-ui.js'
           curl -fs -o /dev/null "http://127.0.0.1:4173${BASE_PATH}/incident/1"
@@ -92,16 +117,12 @@ jobs:
 
       - name: Docker Push
         run: |
-          docker push "${{ steps.meta.outputs.tag_sha }}"
-          docker push "${{ steps.meta.outputs.tag_latest }}"
+          for tag in ${{ steps.meta.outputs.tags }}; do docker push "$tag"; done
 
       - name: Deployment Summary
         run: |
           echo "## Status page image" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Image (site)** | \`${{ steps.meta.outputs.tag_sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Image (moving tag)** | \`${{ steps.meta.outputs.tag_latest }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Base path** | \`${BASE_PATH:-/}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **gh-pages commit** | \`${{ steps.meta.outputs.site_sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          for tag in ${{ steps.meta.outputs.tags }}; do echo "- \`$tag\`" >> "$GITHUB_STEP_SUMMARY"; done
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Base path \`${BASE_PATH:-/}\`, gh-pages commit \`${{ steps.meta.outputs.site_sha }}\`." >> "$GITHUB_STEP_SUMMARY"
