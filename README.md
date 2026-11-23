@@ -76,7 +76,7 @@ Built like the ABC frontend's image: `node:20-alpine` + `serve@14.2.4` on port *
 
 It needs the repository secrets **`DOCKER_USER`** and **`DOCKER_PASSWORDS`** (same names as in the frontend repo). The status data is read live from GitHub, so the image only changes when the site itself does.
 
-On the server:
+The page lives at **https://insights.abcconsultants.in/status** — the app's own domain, under `/status`. On that server:
 
 ```sh
 docker pull <DOCKER_USER>/abc-status:latest
@@ -84,19 +84,19 @@ docker rm -f abc-status 2>/dev/null
 docker run -d --name abc-status --restart unless-stopped -p 127.0.0.1:4174:4173 <DOCKER_USER>/abc-status:latest
 ```
 
-and an nginx site for it, e.g.:
+and in the nginx `server` block of `insights.abcconsultants.in`, **above** the frontend's `location /`:
 
 ```nginx
-server {
-    server_name status.abcconsultants.in;
-    location / {
-        proxy_pass http://127.0.0.1:4174;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+# Status page (abc-status container). The container serves the site under /status,
+# so the path is passed through unchanged (no URI on proxy_pass).
+location = /status { return 301 /status/; }
+location /status/ {
+    proxy_pass http://127.0.0.1:4174;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 
-**Base path.** Upptime builds the site for `status-website.baseUrl` (today `/ABC_Status`), so the container serves it there and redirects `/` to it. The built site also loads its stylesheet and sends its error pages to `https://nishant-chauhan2427.github.io/ABC_Status` (Upptime's `config.path`), so this setup still leans on GitHub Pages. To run it on its own domain: in `.upptimerc.yml` set `cname: status.abcconsultants.in`, remove `baseUrl`, point the `scripts`/`links` URLs at the new domain, and set the repository variable `STATUS_BASE_PATH` to `/`.
+**Base path.** `.upptimerc.yml` sets `cname: insights.abcconsultants.in` and `baseUrl: /status`, so Upptime builds the site for that address (stylesheet, links, error pages) and the image serves it under `/status`. Upptime also writes a CNAME file to `gh-pages`; GitHub Pages is no longer where the page lives, so unpublish it (Settings → Pages) once the server serves `/status`. A different path means changing `baseUrl`, the `scripts`/`links` URLs, and the repository variable `STATUS_BASE_PATH`.
 
-Local build: `git archive origin/gh-pages | tar -x -C site` (in an empty `site/` at the repo root), then `docker build . -f docker/Dockerfile -t abc-status:local`.
+Local build: `git archive origin/gh-pages | tar -x -C site` (in an empty `site/` at the repo root), then `docker build . -f docker/Dockerfile -t abc-status:local` and open http://127.0.0.1:4174/status/ after `docker run -p 4174:4173 abc-status:local`.

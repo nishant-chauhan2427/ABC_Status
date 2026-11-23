@@ -53,10 +53,14 @@ sites:
 # what the status page's incident history is built from.
 
 status-website:
-  # No custom domain yet — served at https://nishant-chauhan2427.github.io/ABC_Status
-  # For e.g. status.abcconsultants.in: add `cname: status.abcconsultants.in`,
-  # remove baseUrl, and point a CNAME DNS record at nishant-chauhan2427.github.io
-  baseUrl: /ABC_Status
+  # Served by the abc-status Docker image (see README → Docker) at
+  # https://insights.abcconsultants.in/status — the app's own domain, under /status,
+  # proxied there by the server's nginx. cname + baseUrl make Upptime build the site
+  # for that address (its stylesheet, links and error pages point there, not at
+  # GitHub Pages). Upptime also writes a CNAME file to gh-pages, so GitHub Pages is
+  # no longer where the page lives — unpublish it once the server serves /status.
+  cname: insights.abcconsultants.in
+  baseUrl: /status
   logoUrl: https://raw.githubusercontent.com/nishant-chauhan2427/ABC_Status/master/assets/abc_logo.png
   name: ABC Platform Status
   introTitle: "**ABC Intelligence Suite** — platform status"
@@ -68,12 +72,12 @@ status-website:
   # Both files live in assets/, which Upptime copies to the site root after the build.
   # Full URLs on purpose: Sapper's export crawls every same-site link, and a relative
   # `status-ui.css` became a page folder that the asset copy then failed to overwrite
-  # (EISDIR). With a custom domain (cname), change the host here too.
+  # (EISDIR). Keep the host and path in step with cname + baseUrl above.
   scripts:
-    - src: https://nishant-chauhan2427.github.io/ABC_Status/status-ui.js
+    - src: https://insights.abcconsultants.in/status/status-ui.js
   links:
     - rel: stylesheet
-      href: https://nishant-chauhan2427.github.io/ABC_Status/status-ui.css
+      href: https://insights.abcconsultants.in/status/status-ui.css
 
 # Upptime also supports notifications, assigning issues, and more
 # See https://upptime.js.org/docs/configuration

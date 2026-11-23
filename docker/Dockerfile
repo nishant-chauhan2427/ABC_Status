@@ -6,9 +6,9 @@
 # there; locally: git archive origin/gh-pages | tar -x -C site
 #
 # Upptime builds the site for one base path (status-website.baseUrl in .upptimerc.yml,
-# today /ABC_Status), so it is served under that path and "/" redirects to it. When
-# the site moves to its own domain (cname set, baseUrl removed), build with
-# --build-arg BASE_PATH= to serve it from the root.
+# /status — the page lives at https://insights.abcconsultants.in/status), so it is
+# served under that path and "/" redirects to it. For a site built for the root,
+# build with --build-arg BASE_PATH= .
 FROM node:20-alpine
 
 WORKDIR /app
@@ -16,7 +16,7 @@ WORKDIR /app
 # Pinned, as in the frontend: an unpinned `serve` changed behaviour under us there.
 RUN npm install -g serve@14.2.4
 
-ARG BASE_PATH=/ABC_Status
+ARG BASE_PATH=/status
 
 COPY site/ ./dist${BASE_PATH}/
 
