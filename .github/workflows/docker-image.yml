@@ -117,7 +117,19 @@ jobs:
 
       - name: Docker Push
         run: |
-          for tag in ${{ steps.meta.outputs.tags }}; do docker push "$tag"; done
+          # Each registry on its own: one refusing (a token's scope, a package's
+          # settings) must not hold back the other, and its reason goes into an
+          # annotation, readable without the logs. Fails only if nothing was pushed.
+          pushed=0
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            if out="$(docker push "$tag" 2>&1)"; then
+              echo "pushed $tag"; pushed=$((pushed + 1))
+            else
+              echo "$out"
+              echo "::error title=Push failed: ${tag%%/*}::$tag — $(printf '%s' "$out" | grep -iE 'denied|unauthorized|forbidden|error|requested access' | tail -1 | cut -c1-300)"
+            fi
+          done
+          [ "$pushed" -gt 0 ]
 
       - name: Deployment Summary
         run: |
