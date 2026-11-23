@@ -11,6 +11,11 @@
 # build with --build-arg BASE_PATH= .
 FROM node:20-alpine
 
+# Links the ghcr.io package to this repository and says what the image is.
+LABEL org.opencontainers.image.source="https://github.com/nishant-chauhan2427/ABC_Status" \
+      org.opencontainers.image.title="abc-status" \
+      org.opencontainers.image.description="ABC Platform Status page (Upptime), served at /status"
+
 WORKDIR /app
 
 # Pinned, as in the frontend: an unpinned `serve` changed behaviour under us there.
